@@ -116,7 +116,7 @@ type Game struct {
 }
 
 type Strategy struct {
-	targetIndex int
+	path *Path
 }
 
 type Path struct {
@@ -125,11 +125,18 @@ type Path struct {
 
 func (g *Game) initialize() {
 	g.strategy = &Strategy{}
-	g.strategy.targetIndex = -1
 }
 
-func (g *Game) findResources() int {
-	ants := 10
+func (g *Game) getAntCount() int {
+	total := 0
+	for _, cell := range g.cells {
+		total = total + cell.myAnts
+	}
+	return total
+}
+
+func (g *Game) findPath() *Path {
+	ants := 1000
 	bestScore := 0
 	var bestPath *Path
 
@@ -149,37 +156,52 @@ func (g *Game) findResources() int {
 		panic("empty path")
 	}
 
-	return bestPath.cells[len(bestPath.cells)-1].index
+	return bestPath
+}
+
+func (g *Game) updateStrategy() {
+	if g.strategy.path == nil {
+		debug("finding initial path")
+		g.strategy.path = g.findPath()
+		return
+	}
+
+	count := g.strategy.path.getResourceCount()
+	if count == 0 {
+		debug("finding new path")
+		g.strategy.path = g.findPath()
+		return
+	}
+
+	//g.strategy.path = g.findPath()
 }
 
 func (g *Game) solve() []string {
+	g.updateStrategy()
+
 	orders := []string{}
-	//orders = append(orders, fmt.Sprintf("BEACON %d %d", index, 1))
-
-	if g.strategy.targetIndex == -1 {
-		debug("finding initial target")
-		g.strategy.targetIndex = g.findResources()
+	pathOrders := g.strategy.path.toOrders()
+	for _, order := range pathOrders {
+		orders = append(orders, order)
 	}
-
-	target := g.cells[g.strategy.targetIndex]
-	if target.resources == 0 {
-		debug("finding new target")
-		g.strategy.targetIndex = g.findResources()
-	}
-
-	debug("strat is %d", g.strategy.targetIndex)
-	orders = append(orders, g.orderLine(g.myBaseIndex, g.strategy.targetIndex, 1))
 
 	return orders
 }
 
-func (g *Game) orderLine(index1 int, index2 int, strength int) string {
+func orderLine(index1 int, index2 int, strength int) string {
 	return fmt.Sprintf("LINE %d %d %d", index1, index2, strength)
 }
 
+func orderBeacon(index int, strength int) string {
+	return fmt.Sprintf("BEACON %d %d", index, strength)
+}
+
 func (g *Game) randomAnt() *Path {
+	maxLength := rand.Intn(g.getAntCount()) + 1
+
 	path := &Path{}
 	currentIndex := g.myBaseIndex
+	path.cells = append(path.cells, g.cells[g.myBaseIndex])
 	//fmt.Fprintln(os.Stderr, fmt.Sprintf("rand ant starts at %d", currentIndex))
 
 	for {
@@ -189,18 +211,58 @@ func (g *Game) randomAnt() *Path {
 
 		//fmt.Fprintln(os.Stderr, fmt.Sprintf("rand ant is at %d with %d res", nextIndex, cell.resources))
 
-		if cell.resources > 0 {
+		length := len(path.cells)
+		if length > maxLength {
 			break
 		}
 
 		currentIndex = nextIndex
 	}
 
+	path.removeDupes()
 	return path
 }
 
+func (p *Path) removeDupes() {
+	cellMap := map[int]*Cell{}
+	for _, cell := range p.cells {
+		cellMap[cell.index] = cell
+	}
+	uniqueCells := []*Cell{}
+	for _, cell := range cellMap {
+		uniqueCells = append(uniqueCells, cell)
+	}
+	p.cells = uniqueCells
+}
+
+func (p *Path) last() *Cell {
+	return p.cells[len(p.cells)-1]
+}
+
+func (p *Path) getResourceCount() int {
+	totalResources := 0
+	for _, cell := range p.cells {
+		factor := 1
+		if cell.content == 2 {
+			factor = 1
+		}
+		totalResources = totalResources + (cell.resources * factor)
+	}
+
+	debug("len %d, tot %d", len(p.cells), totalResources)
+	return totalResources
+}
+
 func (p *Path) score() int {
-	return 1000 - len(p.cells)
+	return p.getResourceCount() - (len(p.cells) * 2)
+}
+
+func (p *Path) toOrders() []string {
+	orders := []string{}
+	for _, cell := range p.cells {
+		orders = append(orders, orderBeacon(cell.index, 1))
+	}
+	return orders
 }
 
 func (c *Cell) randNeigh() int {
