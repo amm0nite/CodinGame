@@ -1,1 +1,1 @@
-Ce dépôt GIT contient mon code pour les challenges CodinGame auxquels j'ai participé. J'utilise principalement JavaScript.
+Ce dépôt GIT contient mon code pour les challenges CodinGame auxquels j'ai participé.
